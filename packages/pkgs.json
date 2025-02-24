@@ -1,0 +1,7 @@
+[
+ {
+  "path": "/packages/peripherals/i2c-tools", 
+  "ver": "latest", 
+  "name": "I2C_TOOLS"
+ }
+]
