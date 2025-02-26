@@ -1,13 +1,24 @@
-# LED闪烁例程
+# 2024艾迈斯欧司朗竞赛 - 使用基于TMF8821的dToF传感器和ART-Pi完成平面角度测算
 
-## 简介
+## 项目介绍
 
-本例程主要功能是让板载的 RGB-LED 中的蓝色 LED 不间断闪烁。
-这个例程也可以做为您的创作的基础工程。
+本项目背景是2024艾迈斯欧司朗dToF传感器光电设计竞赛，使用硬禾提供的dToF定制模块，完成给出的任务。
+本项目使用dToF传感器为主体，使用ART-Pi板卡驱动,测算出传感器距离屏幕的夹角和垂直最小距离.
 
 ## 硬件说明
-<img src="./figures/blink_pcb.png" alt="LED 连接单片机引脚" style="zoom: 50%;" />
-如上图所示，RGB-LED 属于共阳 LED， **阴极** 分别与单片机的引脚相连，其中蓝色 LED 对应 PI8 引脚。单片机引脚输出低电平即可点亮 LED，输出高电平则会熄灭 LED。
+
+<img src="./figures/dToF.png" alt="LED 连接单片机引脚" style="zoom: 50%;" />
+上图为tmf8821 dToF模块，
+
+<img src="./figures/board_large.png" alt="LED 连接单片机引脚" style="zoom: 50%;" />
+上图为ART-Pi开发板
+
+<img src="./figures/ARTPI_PIN.png" alt="LED 连接单片机引脚" style="zoom: 50%;" />
+上图为连接的引脚
+
+## 方案说明
+
+1231
 
 ## 软件说明
 
@@ -48,7 +59,7 @@ int main(void)
 
 正常运行后，蓝色 LED 会周期性闪烁。
 
-## 注意事项
+## 心得体会
 
-如果想要修改`LED_PIN` 宏定义，可以通过 GET_PIN 来修改。
+下次一定
 
