@@ -19,6 +19,7 @@
 #define TMF882X_IMAGE_LENGTH      0x00000A4C
 
 extern const  unsigned char tmf882x_image[];
+static uint8_t tmf8821_calib_value[192]={0};
 static struct rt_semaphore rx_sem;
 /* 回调函数 */
 static rt_err_t sensor_input(void *args)
@@ -289,10 +290,10 @@ static void read_sensor_measure_data()
 //        rt_kprintf("pos:[%d] confidence=%d ,distance=%d\r\n",i,temp_sensor_measure_data[i*3],temp_sensor_measure_data[i*3+1]+temp_sensor_measure_data[i*3+2]*128);
 //    }
 ///
-    if(temp_sensor_measure_data[0] !=255 ||temp_sensor_measure_data[3] !=255||temp_sensor_measure_data[6] !=255)
-    {
-        return ;
-    }
+//    if(temp_sensor_measure_data[0] !=255 ||temp_sensor_measure_data[3] !=255||temp_sensor_measure_data[6] !=255)
+//    {
+//        return ;
+//    }
 
     rt_kprintf("read one frame finished\r\n");
     a=MIN(temp_sensor_measure_data[1]+temp_sensor_measure_data[2]*128,temp_sensor_measure_data[2*3+1]+temp_sensor_measure_data[2*3+2]*128);
@@ -351,10 +352,12 @@ static void tmf8821_init(const char *name)
     //STEP 4
     load_image(i2c_bus);
 
-    //配置传感器
-    write_reg(i2c_bus, 0x08, 0x16);
 
 
+    //工厂校准
+    LOG_I("factory calibration start");
+    //开始校准
+    write_reg(i2c_bus, 0x08, 0x20);
     rt_thread_mdelay(10);
     read_reg(i2c_bus,0x08,1,&temp_data);
     while(0x00 !=temp_data){
@@ -362,10 +365,65 @@ static void tmf8821_init(const char *name)
         LOG_I("read  0x08:0x%x",temp_data);
         rt_thread_mdelay(100);
     }
+    //准备读取
+    write_reg(i2c_bus, 0x08, 0x19);
+    rt_thread_mdelay(10);
+    read_reg(i2c_bus,0x08,1,&temp_data);
+    while(0x00 !=temp_data){
+        read_reg(i2c_bus,0x08,1,&temp_data);
+        LOG_I("read  0x08:0x%x",temp_data);
+        rt_thread_mdelay(100);
+    }
+    //读取校准数据  0x20~0xDF  192个
+    for(uint8_t i=0;i<9;i++)
+        read_reg(i2c_bus,0x20+i*20,20,tmf8821_calib_value+i*20);
+    read_reg(i2c_bus,0x20+9*20,12,tmf8821_calib_value+9*20);
 
-    read_reg(i2c_bus,0x20,3,&read_value);
+
+    //载入校准数据
+    LOG_I("load tmf8821");
+    write_reg(i2c_bus, 0x08, 0x19);
+    rt_thread_mdelay(10);
+    read_reg(i2c_bus,0x08,1,&temp_data);
+    while(0x00 !=temp_data){
+        read_reg(i2c_bus,0x08,1,&temp_data);
+        LOG_I("read  0x08:0x%x",temp_data);
+        rt_thread_mdelay(100);
+    }
+    read_reg(i2c_bus,0x20,3,read_value);
+    while(0x19 !=read_value[0] || 0xbc !=read_value[2] ||0x00 !=read_value[3]){
+        read_reg(i2c_bus,0x20,4,read_value);
+        LOG_I("read  0x20->0x%x 0x%x 0x%x",read_value[0],read_value[2],read_value[3]);
+        rt_thread_mdelay(500);
+    }
+    for(uint8_t i=0x24;i<0xdf;i++)
+    {
+        write_reg(i2c_bus, i, tmf8821_calib_value[i-0x20]);
+    }
+    write_reg(i2c_bus, 0x08, 0x15);
+    rt_thread_mdelay(10);
+    read_reg(i2c_bus,0x08,1,&temp_data);
+    while(0x00 !=temp_data){
+        read_reg(i2c_bus,0x08,1,&temp_data);
+        LOG_I("read  0x08:0x%x",temp_data);
+        rt_thread_mdelay(100);
+    }
+    LOG_I("write back ok");
+    //final
+    //配置传感器
+    LOG_I("config tmf8821");
+    write_reg(i2c_bus, 0x08, 0x16);
+    rt_thread_mdelay(10);
+    read_reg(i2c_bus,0x08,1,&temp_data);
+    while(0x00 !=temp_data){
+        read_reg(i2c_bus,0x08,1,&temp_data);
+        LOG_I("read  0x08:0x%x",temp_data);
+        rt_thread_mdelay(100);
+    }
+    //查配置页面是否被正确载入
+    read_reg(i2c_bus,0x20,3,read_value);
     while(0x16 !=read_value[0] || 0xbc !=read_value[2] ||0x00 !=read_value[3]){
-        read_reg(i2c_bus,0x20,4,&read_value);
+        read_reg(i2c_bus,0x20,4,read_value);
         LOG_I("read  0x20->0x%x 0x%x 0x%x",read_value[0],read_value[2],read_value[3]);
         rt_thread_mdelay(500);
     }
