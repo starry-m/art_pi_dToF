@@ -268,6 +268,13 @@ static uint8_t load_image(struct rt_i2c_bus_device *i2c_bus)
 
 #define EPSILON 1e-9
 
+#define FOV_X_P  10.7
+#define FOV_Y_P  11
+
+#define deg2rad(n)  PI*(n)/180.0
+#define rad2deg(n)  180.0*(n)/PI
+
+
 // 计算三阶行列式的函数
 double gDeterm3(double m[3][3]) {
     return m[0][0]*(m[1][1]*m[2][2] - m[1][2]*m[2][1])
@@ -294,7 +301,7 @@ int gFittingPlane(double *x, double *y, double *z, int n,
 
         sum_x2 += x[i] * x[i];
         sum_y2 += y[i] * y[i];
-        sum_z2 += z[i] * z[i];
+//        sum_z2 += z[i] * z[i];
 
         sum_xy += x[i] * y[i];
         sum_xz += x[i] * z[i];
@@ -350,9 +357,41 @@ int gFittingPlane(double *x, double *y, double *z, int n,
     return 0;
 }
 
-static double point_x[5]={0};
-static double point_y[5]={0};
-static double point_z[5]={0};
+static double point_x[9]={0};
+static double point_y[9]={0};
+static double point_z[9]={0};
+
+static double min_distance;
+
+void measure_to_distance(uint8_t temp_data[], double distance[],uint8_t length)
+{
+    min_distance=temp_data[0*3+1]+temp_data[0*3+2]*256;
+    for(uint8_t i=0;i<length;i++)
+    {
+        distance[i]=temp_data[i*3+1]+temp_data[i*3+2]*256;
+        if(min_distance<distance[i])
+            min_distance=distance[i];
+
+    }
+}
+void distance_to_point(double distance[],double x[],double y[],double z[],uint8_t n)
+{
+    double theta,phi;
+    int flag_x=1,flag_y=1;;
+    for(uint8_t i=0;i<n;i++)
+    {
+        flag_y = i<3?-1:(i<6?0:1);
+        flag_x = (i%3==0)?-1:((i+1)%3==0?1:0);
+
+        theta=deg2rad(90+FOV_X_P*flag_x);
+        phi  =deg2rad(180+FOV_Y_P*flag_y);
+
+        x[i]=distance[i]*sin(theta)*cos(phi);
+        y[i]=distance[i]*sin(theta)*sin(phi);
+        z[i]=distance[i]*cos(theta);
+    }
+}
+
 
 static double calculate_angel_distance(double a,double b,double angel_c)
 {
@@ -366,6 +405,10 @@ static double calculate_angel_distance(double a,double b,double angel_c)
 }
 
 static uint8_t temp_sensor_measure_data[128];
+static double all_distance[9];
+
+
+
 static void read_sensor_measure_data()
 {
     uint8_t temp=0;
@@ -388,62 +431,51 @@ static void read_sensor_measure_data()
 //    }
 
     rt_kprintf("read one frame finished\r\n");//
-//    a=MIN(temp_sensor_measure_data[3+1]+temp_sensor_measure_data[3+2]*256,temp_sensor_measure_data[7*3+1]+temp_sensor_measure_data[7*3+2]*256);
-//    b=temp_sensor_measure_data[4*3+1]+temp_sensor_measure_data[4*3+2]*256;
-//    A=calculate_angel_distance(a,b,16.0);
-//    angel=90.0-A;
-//    distance=b*sin(PI*A/180.0f);
-//    LOG_I("get angel=[%d.%2d]'C distance=[%d.%2d]mm",(uint32_t)angel,(uint16_t)(angel*100)%100,(uint32_t)distance,(uint16_t)(distance*100)%100);
+    a=MIN(temp_sensor_measure_data[3+1]+temp_sensor_measure_data[3+2]*256,temp_sensor_measure_data[7*3+1]+temp_sensor_measure_data[7*3+2]*256);
+    b=temp_sensor_measure_data[4*3+1]+temp_sensor_measure_data[4*3+2]*256;
+    A=calculate_angel_distance(a,b,16.0);
+    angel=90.0-A;
+    distance=b*sin(PI*A/180.0f);
+//    distance=b;
+    LOG_I("[Y]get angel=[%d.%2d]'C distance=[%d.%2d]mm",(uint32_t)angel,(uint16_t)(angel*100)%100,(uint32_t)distance,(uint32_t)(distance*100)%100);
 
-    // 2 4 5 6 8  5点计算
-    //2
-    point_x[0]=0.0;
-    point_y[0]=(double)(temp_sensor_measure_data[3+1]+temp_sensor_measure_data[3+2]*256)*sin(PI*16.0/180.0);
-    point_z[0]=(double)(temp_sensor_measure_data[3+1]+temp_sensor_measure_data[3+2]*256)*cos(PI*16.0/180.0);
 
-    //4
-    point_x[1]=-(double)(temp_sensor_measure_data[3*3+1]+temp_sensor_measure_data[3*3+2]*256)*sin(PI*16.0/180.0);
-    point_y[1]=0.0;
-    point_z[1]=(double)(temp_sensor_measure_data[3*3+1]+temp_sensor_measure_data[3*3+2]*256)*cos(PI*16.0/180.0);
+    a=MIN(temp_sensor_measure_data[3*3+1]+temp_sensor_measure_data[3*3+2]*256,temp_sensor_measure_data[5*3+1]+temp_sensor_measure_data[5*3+2]*256);
+    b=temp_sensor_measure_data[4*3+1]+temp_sensor_measure_data[4*3+2]*256;
+    A=calculate_angel_distance(a,b,16.0);
+    angel=90.0-A;
+    distance=b*sin(PI*A/180.0f);
+//    distance=b;
+    LOG_I("[X]get angel=[%d.%2d]'C distance=[%d.%2d]mm",(uint32_t)angel,(uint16_t)(angel*100)%100,(uint32_t)distance,(uint32_t)(distance*100)%100);
 
-    //5
-    point_x[2]=0.0;
-    point_y[2]=0.0;
-    point_z[2]=(double)(temp_sensor_measure_data[4*3+1]+temp_sensor_measure_data[4*3+2]*256);
 
-    //6
-    point_x[3]=(double)(temp_sensor_measure_data[5*3+1]+temp_sensor_measure_data[5*3+2]*256)*sin(PI*16.0/180.0);
-    point_y[3]=0.0;
-    point_z[3]=(double)(temp_sensor_measure_data[5*3+1]+temp_sensor_measure_data[5*3+2]*256)*cos(PI*16.0/180.0);
 
-    //8
-    point_x[4]=0.0;
-    point_y[4]=-(double)(temp_sensor_measure_data[7*3+1]+temp_sensor_measure_data[7*3+2]*256)*sin(PI*16.0/180.0);
-    point_z[4]=(double)(temp_sensor_measure_data[7*3+1]+temp_sensor_measure_data[7*3+2]*256)*cos(PI*16.0/180.0);
+    measure_to_distance(temp_sensor_measure_data,all_distance,9);
+    distance_to_point(all_distance,point_x,point_y,point_z,9);
 
-//    for(uint8_t i=0;i<5;i++)
-//    {
-//        rt_kprintf("[%d]=%d.%2d   %d.%2d    %d.%2d\r\n",i,(int32_t)point_x[i],(int32_t)(point_x[i]*100)%100,\
-//                (int32_t)point_y[i],(int32_t)(point_y[i]*100)%100,(int32_t)point_z[i],(int32_t)(point_z[i]*100)%100);
-//    }
-
-    if (gFittingPlane(point_x, point_y,point_z, 5, &a, &b, &c) != 0) {
+    if (gFittingPlane(point_x, point_y,point_z, 9, &a, &b, &c) != 0) {
         rt_kprintf("calculate error\r\n");
             return ;
         }
-    rt_kprintf("result--:%d.%2dx + %d.%2dy - z = %d.%2d\n",(uint32_t)a,(uint32_t)(a*100)%100,\
+    rt_kprintf("result--:%d.%2dx + %d.%2dy - z = -%d.%2d\n",(uint32_t)a,(uint32_t)(a*100)%100,\
             (uint32_t)b,(uint32_t)(b*100)%100,(uint32_t)c,(uint16_t)(c*100)%100);
-    angel=1.0/(sqrt(a*a+b*b+c*c));
-    angel=acos(angel)* (180.0 / PI);
-    LOG_I("get angel=[%d.%2d]'C distance=[%d.%2d]mm",(uint32_t)angel,(uint16_t)(angel*100)%100,(uint32_t)distance,(uint16_t)(distance*100)%100);
 
+    double norm=sqrt(a*a+b*b+1);
+    double nx= a/norm;
+    double ny= b/norm;
+    double nz= 1.0/norm;
+    double pitch=rad2deg(atan2(ny,nz));
+    double roll=rad2deg(atan2(nx,nz));
+    distance=abs(c)/norm;
+
+    LOG_I("get angel,pitch=[%d.%2d]'C,roll=[%d.%2d]'C, distance=[%d.%2d]mm",(uint32_t)pitch,(uint32_t)(pitch*100)%100,(uint32_t)roll,(uint32_t)(roll*100)%100,(uint32_t)distance,(uint32_t)(distance*100)%100);
+    LOG_I("min distance =%d.%2dmm",(uint32_t)min_distance,(uint32_t)(min_distance*100)%100);
 }
 static void sensor_thread_entry(void *parameter)
 {
     while (1)
     {
         rt_sem_take(&rx_sem, RT_WAITING_FOREVER);
-//        rt_kprintf("\r\nget\r\n");
         read_sensor_measure_data();
         rt_thread_mdelay(100);
     }
@@ -484,8 +516,6 @@ static void tmf8821_init(const char *name)
 
     //STEP 4
     load_image(i2c_bus);
-
-
 
     //工厂校准
     LOG_I("factory calibration start");
@@ -560,12 +590,12 @@ static void tmf8821_init(const char *name)
         LOG_I("read  0x20->0x%x 0x%x 0x%x",read_value[0],read_value[2],read_value[3]);
         rt_thread_mdelay(500);
     }
-    //设定测量周期
+    //设定测量周期 100ms
     uint8_t data_1[2]={0x64,0x00};
     write_multi_regs(i2c_bus, 0x24, data_1,2);
 
     //设定SPAD类型
-    write_reg(i2c_bus, 0x34,0x06);
+    write_reg(i2c_bus, 0x34,0x01);
     //配置传感器 GPIO0
     write_reg(i2c_bus, 0x31,0x03);
     //将配置写入传感器
