@@ -408,7 +408,7 @@ static uint8_t temp_sensor_measure_data[128];
 static double all_distance[9];
 
 
-
+#define ALG_WAY  1
 static void read_sensor_measure_data()
 {
     uint8_t temp=0;
@@ -430,6 +430,7 @@ static void read_sensor_measure_data()
 //        return ;
 //    }
 
+#if ALG_WAY==1
     rt_kprintf("read one frame finished\r\n");//
     a=MIN(temp_sensor_measure_data[3+1]+temp_sensor_measure_data[3+2]*256,temp_sensor_measure_data[7*3+1]+temp_sensor_measure_data[7*3+2]*256);
     b=temp_sensor_measure_data[4*3+1]+temp_sensor_measure_data[4*3+2]*256;
@@ -448,7 +449,7 @@ static void read_sensor_measure_data()
 //    distance=b;
     LOG_I("[X]get angel=[%d.%2d]'C distance=[%d.%2d]mm",(uint32_t)angel,(uint16_t)(angel*100)%100,(uint32_t)distance,(uint32_t)(distance*100)%100);
 
-
+#else
 
     measure_to_distance(temp_sensor_measure_data,all_distance,9);
     distance_to_point(all_distance,point_x,point_y,point_z,9);
@@ -470,6 +471,8 @@ static void read_sensor_measure_data()
 
     LOG_I("get angel,pitch=[%d.%2d]'C,roll=[%d.%2d]'C, distance=[%d.%2d]mm",(uint32_t)pitch,(uint32_t)(pitch*100)%100,(uint32_t)roll,(uint32_t)(roll*100)%100,(uint32_t)distance,(uint32_t)(distance*100)%100);
     LOG_I("min distance =%d.%2dmm",(uint32_t)min_distance,(uint32_t)(min_distance*100)%100);
+
+#endif
 }
 static void sensor_thread_entry(void *parameter)
 {
