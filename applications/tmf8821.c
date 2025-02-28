@@ -262,6 +262,98 @@ static uint8_t load_image(struct rt_i2c_bus_device *i2c_bus)
 // 自定义求最小值的宏
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+#define EPSILON 1e-9
+
+// 计算三阶行列式的函数
+double gDeterm3(double m[3][3]) {
+    return m[0][0]*(m[1][1]*m[2][2] - m[1][2]*m[2][1])
+         - m[0][1]*(m[1][0]*m[2][2] - m[1][2]*m[2][0])
+         + m[0][2]*(m[1][0]*m[2][1] - m[1][1]*m[2][0]);
+}
+// 最小二乘平面拟合函数    z=ax+by+c
+int gFittingPlane(double *x, double *y, double *z, int n,
+                  double *a, double *b, double *c) {
+    if (n < 3) {
+        rt_kprintf("error----\n");
+        return -1;
+    }
+
+    double sum_x = 0.0, sum_y = 0.0, sum_z = 0.0;
+    double sum_x2 = 0.0, sum_y2 = 0.0, sum_z2 = 0.0;
+    double sum_xy = 0.0, sum_xz = 0.0, sum_yz = 0.0;
+
+    // 计算累加和
+    for (int i = 0; i < n; ++i) {
+        sum_x += x[i];
+        sum_y += y[i];
+        sum_z += z[i];
+
+        sum_x2 += x[i] * x[i];
+        sum_y2 += y[i] * y[i];
+        sum_z2 += z[i] * z[i];
+
+        sum_xy += x[i] * y[i];
+        sum_xz += x[i] * z[i];
+        sum_yz += y[i] * z[i];
+    }
+
+    // 构建系数矩阵
+    double coeff[3][3] = {
+        {sum_x2, sum_xy, sum_x},
+        {sum_xy, sum_y2, sum_y},
+        {sum_x, sum_y, n}
+    };
+
+    //xz, xy, x1, yz, y2, y1, z1, y1, n
+    double matrix_a[3][3] = {
+        {sum_xz, sum_xy, sum_x},
+        {sum_yz, sum_y2, sum_y},
+        {sum_z, sum_y, n}
+    };
+    //x2, xz, x1, xy, yz, y1, x1, z1, n)
+    double matrix_b[3][3] = {
+        {sum_x2, sum_xz, sum_x},
+        {sum_xy, sum_yz, sum_y},
+        {sum_x, sum_z, n}
+    };
+    //x2, xy, xz, xy, y2, yz, x1, y1, z1
+    double matrix_c[3][3] = {
+        {sum_x2, sum_xy, sum_xz},
+        {sum_xy, sum_y2, sum_yz},
+        {sum_x, sum_y, sum_z}
+    };
+
+    // 计算行列式
+    double det = gDeterm3(coeff);
+    det =det>0?det:-det;
+    rt_kprintf("det=%d\n",(uint32_t)(det*1000));
+    // 判断奇异性
+    if (fabs(det) < EPSILON) {
+        rt_kprintf("erro->\n");
+        return -1;
+    }
+
+
+    // 计算a的分子行列式
+    *a = gDeterm3(matrix_a) / det;
+
+    // 计算b的分子行列式
+    *b = gDeterm3(matrix_b) / det;
+
+    // 计算c的分子行列式
+    *c = gDeterm3(matrix_c) / det;
+
+    return 0;
+}
+
+static double point_x[5]={0};
+static double point_y[5]={0};
+static double point_z[5]={0};
+
 static double calculate_angel_distance(double a,double b,double angel_c)
 {
     double c_rad=PI*angel_c/180.0f;
@@ -278,7 +370,7 @@ static void read_sensor_measure_data()
 {
     uint8_t temp=0;
     double angel,A;
-    double a,b;
+    double a,b,c;
     double distance;
     read_reg(i2c_bus,0xe1,1,&temp);
     write_reg(i2c_bus,0xe1,temp);
@@ -295,14 +387,55 @@ static void read_sensor_measure_data()
 //        return ;
 //    }
 
-    rt_kprintf("read one frame finished\r\n");
-    a=MIN(temp_sensor_measure_data[1]+temp_sensor_measure_data[2]*128,temp_sensor_measure_data[2*3+1]+temp_sensor_measure_data[2*3+2]*128);
-    b=temp_sensor_measure_data[1*3+1]+temp_sensor_measure_data[1*3+2]*128;
-    A=calculate_angel_distance(a,b,16.0);
-    angel=90.0-A;
-    distance=b*sin(PI*A/180.0f);
-    LOG_I("get angel=[%d.%2d]'C distance=[%d.%2d]mm",(uint32_t)angel,(uint16_t)(angel*100)%100,(uint32_t)distance,(uint16_t)(distance*100)%100);
+    rt_kprintf("read one frame finished\r\n");//
+//    a=MIN(temp_sensor_measure_data[3+1]+temp_sensor_measure_data[3+2]*256,temp_sensor_measure_data[7*3+1]+temp_sensor_measure_data[7*3+2]*256);
+//    b=temp_sensor_measure_data[4*3+1]+temp_sensor_measure_data[4*3+2]*256;
+//    A=calculate_angel_distance(a,b,16.0);
+//    angel=90.0-A;
+//    distance=b*sin(PI*A/180.0f);
+//    LOG_I("get angel=[%d.%2d]'C distance=[%d.%2d]mm",(uint32_t)angel,(uint16_t)(angel*100)%100,(uint32_t)distance,(uint16_t)(distance*100)%100);
 
+    // 2 4 5 6 8  5点计算
+    //2
+    point_x[0]=0.0;
+    point_y[0]=(double)(temp_sensor_measure_data[3+1]+temp_sensor_measure_data[3+2]*256)*sin(PI*16.0/180.0);
+    point_z[0]=(double)(temp_sensor_measure_data[3+1]+temp_sensor_measure_data[3+2]*256)*cos(PI*16.0/180.0);
+
+    //4
+    point_x[1]=-(double)(temp_sensor_measure_data[3*3+1]+temp_sensor_measure_data[3*3+2]*256)*sin(PI*16.0/180.0);
+    point_y[1]=0.0;
+    point_z[1]=(double)(temp_sensor_measure_data[3*3+1]+temp_sensor_measure_data[3*3+2]*256)*cos(PI*16.0/180.0);
+
+    //5
+    point_x[2]=0.0;
+    point_y[2]=0.0;
+    point_z[2]=(double)(temp_sensor_measure_data[4*3+1]+temp_sensor_measure_data[4*3+2]*256);
+
+    //6
+    point_x[3]=(double)(temp_sensor_measure_data[5*3+1]+temp_sensor_measure_data[5*3+2]*256)*sin(PI*16.0/180.0);
+    point_y[3]=0.0;
+    point_z[3]=(double)(temp_sensor_measure_data[5*3+1]+temp_sensor_measure_data[5*3+2]*256)*cos(PI*16.0/180.0);
+
+    //8
+    point_x[4]=0.0;
+    point_y[4]=-(double)(temp_sensor_measure_data[7*3+1]+temp_sensor_measure_data[7*3+2]*256)*sin(PI*16.0/180.0);
+    point_z[4]=(double)(temp_sensor_measure_data[7*3+1]+temp_sensor_measure_data[7*3+2]*256)*cos(PI*16.0/180.0);
+
+//    for(uint8_t i=0;i<5;i++)
+//    {
+//        rt_kprintf("[%d]=%d.%2d   %d.%2d    %d.%2d\r\n",i,(int32_t)point_x[i],(int32_t)(point_x[i]*100)%100,\
+//                (int32_t)point_y[i],(int32_t)(point_y[i]*100)%100,(int32_t)point_z[i],(int32_t)(point_z[i]*100)%100);
+//    }
+
+    if (gFittingPlane(point_x, point_y,point_z, 5, &a, &b, &c) != 0) {
+        rt_kprintf("calculate error\r\n");
+            return ;
+        }
+    rt_kprintf("result--:%d.%2dx + %d.%2dy - z = %d.%2d\n",(uint32_t)a,(uint32_t)(a*100)%100,\
+            (uint32_t)b,(uint32_t)(b*100)%100,(uint32_t)c,(uint16_t)(c*100)%100);
+    angel=1.0/(sqrt(a*a+b*b+c*c));
+    angel=acos(angel)* (180.0 / PI);
+    LOG_I("get angel=[%d.%2d]'C distance=[%d.%2d]mm",(uint32_t)angel,(uint16_t)(angel*100)%100,(uint32_t)distance,(uint16_t)(distance*100)%100);
 
 }
 static void sensor_thread_entry(void *parameter)
